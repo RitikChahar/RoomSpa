@@ -1,5 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes, parser_classes
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework import status
 import os
@@ -15,7 +15,7 @@ from .serializers import (
 )
 from User.functions.image_handler import upload_image
 
-@api_view(['GET', 'POST'])
+@api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsTherapist])
 def location_view(request):
     if request.method == 'GET':
@@ -25,7 +25,7 @@ def location_view(request):
             return Response(serializer.data)
         except Location.DoesNotExist:
             return Response({}, status=status.HTTP_404_NOT_FOUND)
-    
+
     elif request.method == 'POST':
         serializer = LocationSerializer(data=request.data)
         if serializer.is_valid():
@@ -36,9 +36,20 @@ def location_view(request):
             return Response(LocationSerializer(location).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET', 'POST'])
+    elif request.method == 'PUT':
+        try:
+            location = Location.objects.get(user=request.user)
+            serializer = LocationSerializer(location, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Location.DoesNotExist:
+            return Response({"error": "Location not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET', 'POST', 'DELETE'])
 @permission_classes([IsTherapist])
-@parser_classes([MultiPartParser, FormParser])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def pictures_view(request):
     if request.method == 'GET':
         try:
@@ -110,6 +121,18 @@ def pictures_view(request):
                 pictures.national_id = uploaded_urls['national_id']
             
             if 'more_pictures' in uploaded_urls:
+                current_count = len(pictures.more_pictures)
+                new_count = len(uploaded_urls['more_pictures'])
+                if current_count >= 6:
+                    return Response(
+                        {"error": "Max images can only be 6, delete any image to add new image"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if current_count + new_count > 6:
+                    return Response(
+                        {"error": "Adding these images exceeds the maximum limit of 6, please delete some images first."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 pictures.more_pictures.extend(uploaded_urls['more_pictures'])
             
             pictures.save()
@@ -141,8 +164,23 @@ def pictures_view(request):
         
         serializer = PicturesSerializer(pictures)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-@api_view(['GET', 'POST'])
+    
+    elif request.method == 'DELETE':
+        url_to_delete = request.data.get('url')
+        if not url_to_delete:
+            return Response({"error": "Image URL is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pictures = Pictures.objects.get(user=request.user)
+            if url_to_delete in pictures.more_pictures:
+                pictures.more_pictures.remove(url_to_delete)
+                pictures.save()
+                return Response({"message": "Image deleted successfully", "more_pictures": pictures.more_pictures}, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Image URL not found in more_pictures"}, status=status.HTTP_404_NOT_FOUND)
+        except Pictures.DoesNotExist:
+            return Response({"error": "Pictures not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+@api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsTherapist])
 def services_view(request):
     if request.method == 'GET':
@@ -163,7 +201,18 @@ def services_view(request):
             return Response(ServicesSerializer(services).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET', 'POST'])
+    elif request.method == 'PUT':
+        try:
+            services = Services.objects.get(user=request.user)
+            serializer = ServicesSerializer(services, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Services.DoesNotExist:
+            return Response({"error": "Services not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+@api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsTherapist])
 def bank_details_view(request):
     if request.method == 'GET':
@@ -183,6 +232,17 @@ def bank_details_view(request):
             )
             return Response(BankDetailsSerializer(bank_details).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'PUT':
+        try:
+            bank_details = BankDetails.objects.get(user=request.user)
+            serializer = BankDetailsSerializer(bank_details, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except BankDetails.DoesNotExist:
+            return Response({"error": "Bank details not found"}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsTherapist])
