@@ -6,6 +6,8 @@ from django.conf import settings
 urlpatterns = [
     path("admin/", admin.site.urls),
     path('', include('User.urls')),
+    path('customer/', include('customer.urls')),
+    path('therapist/', include('therapist.urls')),
 ]
 
 def custom_page_not_found(request, exception):

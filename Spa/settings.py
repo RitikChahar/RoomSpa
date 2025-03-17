@@ -24,7 +24,12 @@ EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
 EMAIL_HOST = os.getenv('EMAIL_HOST')
 EMAIL_PORT = os.getenv('EMAIL_PORT')
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL') 
+
 DATABASE_STRING = os.getenv('DATABASE_STRING') 
+
+IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
+IMAGEKIT_PUBLIC_KEY = os.getenv('IMAGEKIT_PUBLIC_KEY')
+IMAGEKIT_URL_ENDPOINT = os.getenv('IMAGEKIT_URL_ENDPOINT')
 
 BASE_URL = os.getenv('BASE_URL')
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1")
@@ -60,6 +65,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'User',
+    'customer',
+    'therapist',
 ]
 
 MIDDLEWARE = [

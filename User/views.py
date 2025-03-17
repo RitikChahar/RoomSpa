@@ -99,11 +99,25 @@ def register(request):
         
         if email and UserProfile.objects.filter(email=email).exists():
             user_profile = UserProfile.objects.get(email=email)
+            user_profile.name = name
+            user_profile.phone_number = phone_number
+            user_profile.gender = gender
+            user_profile.role = role
+            user_profile.consent = consent
             user_profile.verification_token = verification_token
+            if password:
+                user_profile.set_password(password)
             user_profile.save()
         elif phone_number and UserProfile.objects.filter(phone_number=phone_number).exists():
             user_profile = UserProfile.objects.get(phone_number=phone_number)
+            user_profile.name = name
+            user_profile.email = email
+            user_profile.gender = gender
+            user_profile.role = role
+            user_profile.consent = consent
             user_profile.verification_token = verification_token
+            if password:
+                user_profile.set_password(password)
             user_profile.save()
         else:
             UserProfile.objects.create_user(
