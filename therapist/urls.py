@@ -19,4 +19,8 @@ urlpatterns = [
     path('conversations/<int:conversation_id>/', views.conversation_detail_view, name='conversation_detail'),
     path('conversations/<int:conversation_id>/messages/', views.send_message_view, name='send_message'),
     path('stats/', views.therapist_stats_view, name='therapist_stats'),
+    path('reviews/', views.therapist_reviews_list, name='therapist_reviews_list'),
+    path('reviews/summary/', views.therapist_review_summary, name='therapist_review_summary'),
+    path('reviews/<int:review_id>/', views.therapist_review_detail, name='therapist_review_detail'),
+    path('reviews/create/', views.post_therapist_review, name='post_therapist_review'),
 ]

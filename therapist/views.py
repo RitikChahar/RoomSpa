@@ -9,8 +9,8 @@ from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
 from decimal import Decimal
 import datetime
 import os
-from User.permissions import IsTherapist
-from .models import Location, Pictures, Services, BankDetails, Order, Earnings, Message, Conversation
+from User.permissions import IsTherapist, IsCustomer
+from .models import Location, Pictures, Services, BankDetails, Order, Earnings, Message, Conversation, TherapistReview
 from .serializers import (
     LocationSerializer, 
     PicturesSerializer, 
@@ -20,7 +20,9 @@ from .serializers import (
     OrderSerializer, 
     OrderUpdateSerializer,
     MessageSerializer, 
-    ConversationSerializer
+    ConversationSerializer,
+    TherapistReviewSerializer, 
+    TherapistReviewSummarySerializer
 )
 from User.functions.image_handler import upload_image
 
@@ -483,3 +485,43 @@ def therapist_stats_view(request):
         'completion_rate': round(completion_rate, 1)
     }
     return Response(response_data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def therapist_reviews_list(request):
+    min_rating = request.query_params.get('min_rating')
+    max_rating = request.query_params.get('max_rating')
+    
+    reviews = TherapistReview.objects.filter(therapist=request.user)
+    
+    if min_rating:
+        reviews = reviews.filter(rating__gte=min_rating)
+    if max_rating:
+        reviews = reviews.filter(rating__lte=max_rating)
+    serializer = TherapistReviewSerializer(reviews, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def therapist_review_summary(request):
+    serializer = TherapistReviewSummarySerializer(request.user)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def therapist_review_detail(request, review_id):
+    try:
+        review = TherapistReview.objects.get(id=review_id, therapist=request.user)
+        serializer = TherapistReviewSerializer(review)
+        return Response(serializer.data)
+    except TherapistReview.DoesNotExist:
+        return Response({"error": "Review not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+@api_view(['POST'])
+@permission_classes([IsCustomer])
+def post_therapist_review(request):
+    serializer = TherapistReviewSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(client=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

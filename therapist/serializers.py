@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import Location, Pictures, Services, BankDetails, Order, Message, Conversation
+from .models import Location, Pictures, Services, BankDetails, Order, Message, Conversation, TherapistReview
 from User.serializers import UserMinimalSerializer
+from django.contrib.auth import get_user_model
+from django.db.models import Avg
 
 class LocationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -105,3 +107,53 @@ class ConversationSerializer(serializers.ModelSerializer):
             sender__in=obj.participants.all().exclude(id=user.id),
             is_read=False
         ).count()
+    
+class TherapistReviewSerializer(serializers.ModelSerializer):
+    client_name = serializers.SerializerMethodField()
+    service_type = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TherapistReview
+        fields = ['id', 'client_name', 'rating', 'comment', 'service_quality', 
+                  'punctuality', 'professionalism', 'service_type', 'created_at']
+        read_only_fields = ['id', 'client_name', 'service_type', 'created_at']
+        
+    def get_client_name(self, obj):
+        return obj.client.get_full_name() or obj.client.username
+        
+    def get_service_type(self, obj):
+        if obj.order:
+            return obj.order.service_type
+        return None
+
+class TherapistReviewSummarySerializer(serializers.ModelSerializer):
+    average_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
+    service_quality_avg = serializers.SerializerMethodField()
+    punctuality_avg = serializers.SerializerMethodField()
+    professionalism_avg = serializers.SerializerMethodField()
+    recent_reviews = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = get_user_model()
+        fields = ['id', 'average_rating', 'review_count', 'service_quality_avg', 
+                  'punctuality_avg', 'professionalism_avg', 'recent_reviews']
+        
+    def get_average_rating(self, obj):
+        return TherapistReview.objects.filter(therapist=obj).aggregate(avg=Avg('rating'))['avg'] or 0
+        
+    def get_review_count(self, obj):
+        return TherapistReview.objects.filter(therapist=obj).count()
+        
+    def get_service_quality_avg(self, obj):
+        return TherapistReview.objects.filter(therapist=obj, service_quality__isnull=False).aggregate(avg=Avg('service_quality'))['avg'] or 0
+        
+    def get_punctuality_avg(self, obj):
+        return TherapistReview.objects.filter(therapist=obj, punctuality__isnull=False).aggregate(avg=Avg('punctuality'))['avg'] or 0
+        
+    def get_professionalism_avg(self, obj):
+        return TherapistReview.objects.filter(therapist=obj, professionalism__isnull=False).aggregate(avg=Avg('professionalism'))['avg'] or 0
+        
+    def get_recent_reviews(self, obj):
+        recent = TherapistReview.objects.filter(therapist=obj).order_by('-created_at')[:5]
+        return TherapistReviewSerializer(recent, many=True).data
