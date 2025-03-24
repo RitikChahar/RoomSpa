@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Location, Pictures, Services, BankDetails
+from .models import Location, Pictures, Services, BankDetails, Order, Message, Conversation
+from User.serializers import UserMinimalSerializer
 
 class LocationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -64,3 +65,43 @@ class TherapistProfileSerializer(serializers.Serializer):
             'services': services_data,
             'bank_details': bank_details_data
         }
+    
+class OrderSerializer(serializers.ModelSerializer):
+    client_details = UserMinimalSerializer(source='client', read_only=True)
+    therapist_details = UserMinimalSerializer(source='therapist', read_only=True)
+    class Meta:
+        model = Order
+        fields = '__all__'
+        read_only_fields = ('id', 'therapist', 'created_at', 'accepted_at', 'started_at', 'completed_at', 'cancelled_at')
+
+class OrderUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['status']
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_details = UserMinimalSerializer(source='sender', read_only=True)
+    class Meta:
+        model = Message
+        fields = '__all__'
+        read_only_fields = ('id', 'sender', 'created_at')
+
+class ConversationSerializer(serializers.ModelSerializer):
+    participants_details = UserMinimalSerializer(source='participants', many=True, read_only=True)
+    last_message_content = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    class Meta:
+        model = Conversation
+        fields = '__all__'
+        read_only_fields = ('id', 'updated_at')
+    def get_last_message_content(self, obj):
+        if obj.last_message:
+            return MessageSerializer(obj.last_message).data
+        return None
+    def get_unread_count(self, obj):
+        user = self.context['request'].user
+        return Message.objects.filter(
+            receiver=user,
+            sender__in=obj.participants.all().exclude(id=user.id),
+            is_read=False
+        ).count()

@@ -2,16 +2,25 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework import status
-import os
 from django.conf import settings
+from django.utils import timezone
+from django.db.models import Sum, Count, Q, Avg
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
+from decimal import Decimal
+import datetime
+import os
 from User.permissions import IsTherapist
-from .models import Location, Pictures, Services, BankDetails
+from .models import Location, Pictures, Services, BankDetails, Order, Earnings, Message, Conversation
 from .serializers import (
     LocationSerializer, 
     PicturesSerializer, 
     ServicesSerializer, 
     BankDetailsSerializer,
-    TherapistProfileSerializer
+    TherapistProfileSerializer,
+    OrderSerializer, 
+    OrderUpdateSerializer,
+    MessageSerializer, 
+    ConversationSerializer
 )
 from User.functions.image_handler import upload_image
 
@@ -287,3 +296,190 @@ def therapist_profile_view(request):
             result = serializer.save()
             return Response(result, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def incoming_orders_view(request):
+    pending_orders = Order.objects.filter(therapist=request.user, status='pending')
+    serializer = OrderSerializer(pending_orders, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def order_detail_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user)
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['PUT'])
+@permission_classes([IsTherapist])
+def update_order_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user)
+        serializer = OrderUpdateSerializer(order, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsTherapist])
+def accept_order_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user, status='pending')
+        order.status = 'accepted'
+        order.accepted_at = timezone.now()
+        order.save()
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found or already processed"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsTherapist])
+def start_service_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user, status='accepted')
+        order.status = 'started'
+        order.started_at = timezone.now()
+        order.save()
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found or not in accepted status"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsTherapist])
+def complete_order_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user, status='started')
+        order.status = 'completed'
+        order.completed_at = timezone.now()
+        order.save()
+        platform_fee_percentage = Decimal('0.20')
+        platform_fee = order.price * platform_fee_percentage
+        net_amount = order.price - platform_fee
+        Earnings.objects.create(
+            user=request.user,
+            order=order,
+            amount=order.price,
+            platform_fee=platform_fee,
+            net_amount=net_amount
+        )
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found or not in started status"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsTherapist])
+def cancel_order_view(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id, therapist=request.user, status__in=['pending', 'accepted'])
+        order.status = 'cancelled'
+        order.cancelled_at = timezone.now()
+        order.save()
+        serializer = OrderSerializer(order)
+        return Response(serializer.data)
+    except Order.DoesNotExist:
+        return Response({"error": "Order not found or cannot be cancelled"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def earnings_summary_view(request):
+    period = request.query_params.get('period', 'week')
+    earnings_query = Earnings.objects.filter(user=request.user)
+    total_earnings = earnings_query.aggregate(total=Sum('net_amount'), orders=Count('id'))
+    today = timezone.now().date()
+    if period == 'day':
+        start_date = today - datetime.timedelta(days=6)
+        earnings_over_time = earnings_query.filter(created_at__date__gte=start_date).annotate(day=TruncDay('created_at')).values('day').annotate(amount=Sum('net_amount'), count=Count('id')).order_by('day')
+    elif period == 'week':
+        start_date = today - datetime.timedelta(weeks=3)
+        earnings_over_time = earnings_query.filter(created_at__date__gte=start_date).annotate(week=TruncWeek('created_at')).values('week').annotate(amount=Sum('net_amount'), count=Count('id')).order_by('week')
+    elif period == 'month':
+        start_date = (today.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+        start_date = start_date.replace(day=1) - datetime.timedelta(days=150)
+        earnings_over_time = earnings_query.filter(created_at__date__gte=start_date).annotate(month=TruncMonth('created_at')).values('month').annotate(amount=Sum('net_amount'), count=Count('id')).order_by('month')
+    else:
+        earnings_over_time = []
+    recent_orders = Order.objects.filter(therapist=request.user, status='completed').order_by('-completed_at')[:5]
+    recent_orders_data = OrderSerializer(recent_orders, many=True).data
+    response_data = {
+        'total_earnings': total_earnings.get('total') or 0,
+        'total_orders': total_earnings.get('orders') or 0,
+        'earnings_over_time': list(earnings_over_time),
+        'recent_orders': recent_orders_data
+    }
+    return Response(response_data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def conversations_view(request):
+    conversations = Conversation.objects.filter(participants=request.user)
+    serializer = ConversationSerializer(conversations, many=True, context={'request': request})
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def conversation_detail_view(request, conversation_id):
+    try:
+        conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        Message.objects.filter(receiver=request.user, sender__in=conversation.participants.all().exclude(id=request.user.id), is_read=False).update(is_read=True)
+        messages = Message.objects.filter(
+            (Q(sender=request.user) & Q(receiver__in=conversation.participants.all().exclude(id=request.user.id))) |
+            (Q(receiver=request.user) & Q(sender__in=conversation.participants.all().exclude(id=request.user.id)))
+        ).order_by('created_at')
+        messages_serializer = MessageSerializer(messages, many=True)
+        conversation_serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response({'conversation': conversation_serializer.data, 'messages': messages_serializer.data})
+    except Conversation.DoesNotExist:
+        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsTherapist])
+def send_message_view(request, conversation_id):
+    try:
+        conversation = Conversation.objects.get(id=conversation_id, participants=request.user)
+        recipient = conversation.participants.exclude(id=request.user.id).first()
+        message = Message.objects.create(
+            sender=request.user,
+            receiver=recipient,
+            content=request.data.get('content', '')
+        )
+        conversation.last_message = message
+        conversation.save()
+        serializer = MessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    except Conversation.DoesNotExist:
+        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([IsTherapist])
+def therapist_stats_view(request):
+    orders = Order.objects.filter(therapist=request.user)
+    total_orders = orders.count()
+    completed_orders = orders.filter(status='completed').count()
+    cancelled_orders = orders.filter(status='cancelled').count()
+    rated_orders = orders.filter(status='completed', rating__isnull=False)
+    avg_rating = rated_orders.aggregate(avg=Avg('rating'))['avg'] or 0
+    response_rate = 0
+    if orders.exclude(status='pending').count() > 0:
+        response_rate = (orders.filter(status__in=['accepted', 'started', 'completed']).count() / orders.exclude(status='pending').count()) * 100
+    completion_rate = 0
+    if orders.filter(status__in=['completed', 'cancelled']).count() > 0:
+        completion_rate = (orders.filter(status='completed').count() / orders.filter(status__in=['completed', 'cancelled']).count()) * 100
+    response_data = {
+        'total_orders': total_orders,
+        'completed_orders': completed_orders,
+        'cancelled_orders': cancelled_orders,
+        'avg_rating': round(avg_rating, 1),
+        'response_rate': round(response_rate, 1),
+        'completion_rate': round(completion_rate, 1)
+    }
+    return Response(response_data)

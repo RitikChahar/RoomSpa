@@ -5,3 +5,8 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['name', 'email', 'gender', 'consent']
+
+class UserMinimalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'name', 'email']
