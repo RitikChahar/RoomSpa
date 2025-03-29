@@ -29,13 +29,8 @@ class Services(models.Model):
         ('nails', 'Nails'),
         ('hair', 'Hair Fan'),
     ]
-    
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='therapist_services')
-    services = ArrayField(
-        models.CharField(max_length=20, choices=SERVICE_CHOICES),
-        blank=True,
-        default=list
-    )
+    services = models.JSONField(blank=True, default=dict)
 
 class BankDetails(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='therapist_bank_details')

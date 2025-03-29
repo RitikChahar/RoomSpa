@@ -201,7 +201,6 @@ def services_view(request):
             return Response(serializer.data)
         except Services.DoesNotExist:
             return Response({}, status=status.HTTP_404_NOT_FOUND)
-    
     elif request.method == 'POST':
         serializer = ServicesSerializer(data=request.data)
         if serializer.is_valid():
@@ -211,7 +210,6 @@ def services_view(request):
             )
             return Response(ServicesSerializer(services).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     elif request.method == 'PUT':
         try:
             services = Services.objects.get(user=request.user)
