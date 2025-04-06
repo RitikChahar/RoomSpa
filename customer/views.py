@@ -10,7 +10,8 @@ from kafka import KafkaProducer
 from User.permissions import IsCustomer
 from .models import CustomerAddress, Booking, Transaction
 from chat.models import Conversation, Message
-from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, ConversationSerializer, MessageSerializer, TransactionSerializer
+from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, TransactionSerializer
+from chat.serializers import ConversationSerializer, MessageSerializer
 from therapist.models import Services as TherapistServices, Location
 
 @api_view(['GET', 'POST', 'PUT'])
@@ -97,16 +98,20 @@ def search_therapists_view(request):
     lat = request.query_params.get('latitude')
     lon = request.query_params.get('longitude')
     services_param = request.query_params.get('services')
+    radius = request.query_params.get('radius', '10') 
+    
     if not lat or not lon or not services_param:
         return Response({'error': 'Missing parameters'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         user_lat = float(lat)
         user_lon = float(lon)
+        search_radius = float(radius)
     except ValueError:
-        return Response({'error': 'Invalid coordinates'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid coordinates or radius'}, status=status.HTTP_400_BAD_REQUEST)
+    
     service_list = [s.strip() for s in services_param.split(',') if s.strip()]
     def haversine(lat1, lon1, lat2, lon2):
-        R = 6371
+        R = 6371 
         phi1 = math.radians(lat1)
         phi2 = math.radians(lat2)
         dphi = math.radians(lat2 - lat1)
@@ -114,30 +119,37 @@ def search_therapists_view(request):
         a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
+    
     qs = TherapistServices.objects.all()
-    query = None
-    for s in service_list:
+    query = Q(services__icontains=service_list[0]) if service_list else None
+    for s in service_list[1:]:
         query |= Q(services__icontains=s)
-    qs = qs.filter(query)
+    if query:
+        qs = qs.filter(query)
+    
     therapist_ids = qs.values_list('user_id', flat=True)
     locations = Location.objects.filter(user_id__in=therapist_ids)
     results = []
+    
     for loc in locations:
         if loc.latitude is None or loc.longitude is None:
             continue
+        
         distance = haversine(user_lat, user_lon, float(loc.latitude), float(loc.longitude))
-        if distance <= float(loc.service_radius):
+        
+        if distance <= search_radius and distance <= float(loc.service_radius):
             therapist = loc.user
             serv_obj = TherapistServices.objects.filter(user=therapist).first()
             data = {
                 'id': therapist.id,
-                'name': therapist.get_full_name() or therapist.username,
+                'name': therapist.name, 
                 'email': therapist.email,
                 'address': loc.address,
                 'distance': round(distance, 2),
                 'services': serv_obj.services if serv_obj else []
             }
             results.append(data)
+    
     serializer = TherapistDetailSerializer(results, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 

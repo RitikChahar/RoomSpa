@@ -49,7 +49,7 @@ class UserProfile(AbstractBaseUser, PermissionsMixin):
         regex=r'^\+?1?\d{9,15}$',
         message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
     )
-    phone_number = models.CharField(validators=[phone_regex], max_length=17, unique=True, null=True, blank=True)
+    phone_number = models.CharField(validators=[phone_regex], max_length=30, unique=True, null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='prefer_not_to_say')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
     consent = models.BooleanField(default=False)
