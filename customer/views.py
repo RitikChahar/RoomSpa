@@ -1,17 +1,17 @@
 import math
+import json
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Q
-from django.conf import settings
-from django.shortcuts import get_object_or_404
-from therapist.models import Location, Services as TherapistServices
-from django.contrib.auth import get_user_model
+from kafka import KafkaProducer
 from User.permissions import IsCustomer
 from .models import CustomerAddress, Booking, Transaction
 from chat.models import Conversation, Message
-from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, TransactionSerializer
-from chat.serializers import ConversationSerializer, MessageSerializer
+from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, ConversationSerializer, MessageSerializer, TransactionSerializer
+from therapist.models import Services as TherapistServices, Location
 
 @api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsCustomer])
@@ -41,8 +41,12 @@ def customer_address_view(request):
 def book_therapist(request):
     serializer = BookingSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save(customer=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        booking = serializer.save(customer=request.user)
+        producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+        data = {'booking_id': str(booking.id), 'customer_id': request.user.id, 'latitude': booking.latitude, 'longitude': booking.longitude, 'services': booking.services}
+        producer.send('service_requests', data)
+        producer.flush()
+        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
@@ -50,8 +54,8 @@ def book_therapist(request):
 def therapist_detail_view(request, therapist_id):
     User = get_user_model()
     therapist = get_object_or_404(User, id=therapist_id)
-    loc = Location.objects.filter(user=therapist).first()
-    serv_obj = TherapistServices.objects.filter(user=therapist).first()
+    loc = None
+    serv_obj = None
     data = {
         'id': therapist.id,
         'name': therapist.get_full_name() or therapist.username,
@@ -111,7 +115,7 @@ def search_therapists_view(request):
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
     qs = TherapistServices.objects.all()
-    query = Q()
+    query = None
     for s in service_list:
         query |= Q(services__icontains=s)
     qs = qs.filter(query)
