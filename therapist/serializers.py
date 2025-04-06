@@ -32,41 +32,15 @@ class TherapistProfileSerializer(serializers.Serializer):
     
     def create(self, validated_data):
         user = self.context['request'].user
-        
-        location_data = validated_data.get('location')
-        if location_data:
-            Location.objects.update_or_create(
-                user=user,
-                defaults=location_data
-            )
-        
-        pictures_data = validated_data.get('pictures')
-        if pictures_data:
-            Pictures.objects.update_or_create(
-                user=user,
-                defaults=pictures_data
-            )
-        
-        services_data = validated_data.get('services')
-        if services_data:
-            Services.objects.update_or_create(
-                user=user,
-                defaults=services_data
-            )
-        
-        bank_details_data = validated_data.get('bank_details')
-        if bank_details_data:
-            BankDetails.objects.update_or_create(
-                user=user,
-                defaults=bank_details_data
-            )
-        
-        return {
-            'location': location_data,
-            'pictures': pictures_data,
-            'services': services_data,
-            'bank_details': bank_details_data
-        }
+        if 'location' in validated_data:
+            Location.objects.update_or_create(user=user, defaults=validated_data.get('location'))
+        if 'pictures' in validated_data:
+            Pictures.objects.update_or_create(user=user, defaults=validated_data.get('pictures'))
+        if 'services' in validated_data:
+            Services.objects.update_or_create(user=user, defaults=validated_data.get('services'))
+        if 'bank_details' in validated_data:
+            BankDetails.objects.update_or_create(user=user, defaults=validated_data.get('bank_details'))
+        return validated_data
     
 class OrderSerializer(serializers.ModelSerializer):
     client_details = UserMinimalSerializer(source='client', read_only=True)
@@ -102,25 +76,17 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
     def get_unread_count(self, obj):
         user = self.context['request'].user
-        return Message.objects.filter(
-            receiver=user,
-            sender__in=obj.participants.all().exclude(id=user.id),
-            is_read=False
-        ).count()
+        return Message.objects.filter(receiver=user, sender__in=obj.participants.exclude(id=user.id), is_read=False).count()
     
 class TherapistReviewSerializer(serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     service_type = serializers.SerializerMethodField()
-    
     class Meta:
         model = TherapistReview
-        fields = ['id', 'client_name', 'rating', 'comment', 'service_quality', 
-                  'punctuality', 'professionalism', 'service_type', 'created_at']
+        fields = ['id', 'client_name', 'rating', 'comment', 'service_quality', 'punctuality', 'professionalism', 'service_type', 'created_at']
         read_only_fields = ['id', 'client_name', 'service_type', 'created_at']
-        
     def get_client_name(self, obj):
         return obj.client.get_full_name() or obj.client.username
-        
     def get_service_type(self, obj):
         if obj.order:
             return obj.order.service_type
@@ -133,27 +99,19 @@ class TherapistReviewSummarySerializer(serializers.ModelSerializer):
     punctuality_avg = serializers.SerializerMethodField()
     professionalism_avg = serializers.SerializerMethodField()
     recent_reviews = serializers.SerializerMethodField()
-    
     class Meta:
         model = get_user_model()
-        fields = ['id', 'average_rating', 'review_count', 'service_quality_avg', 
-                  'punctuality_avg', 'professionalism_avg', 'recent_reviews']
-        
+        fields = ['id', 'average_rating', 'review_count', 'service_quality_avg', 'punctuality_avg', 'professionalism_avg', 'recent_reviews']
     def get_average_rating(self, obj):
         return TherapistReview.objects.filter(therapist=obj).aggregate(avg=Avg('rating'))['avg'] or 0
-        
     def get_review_count(self, obj):
         return TherapistReview.objects.filter(therapist=obj).count()
-        
     def get_service_quality_avg(self, obj):
         return TherapistReview.objects.filter(therapist=obj, service_quality__isnull=False).aggregate(avg=Avg('service_quality'))['avg'] or 0
-        
     def get_punctuality_avg(self, obj):
         return TherapistReview.objects.filter(therapist=obj, punctuality__isnull=False).aggregate(avg=Avg('punctuality'))['avg'] or 0
-        
     def get_professionalism_avg(self, obj):
         return TherapistReview.objects.filter(therapist=obj, professionalism__isnull=False).aggregate(avg=Avg('professionalism'))['avg'] or 0
-        
     def get_recent_reviews(self, obj):
         recent = TherapistReview.objects.filter(therapist=obj).order_by('-created_at')[:5]
         return TherapistReviewSerializer(recent, many=True).data

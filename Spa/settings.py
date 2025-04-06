@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'User',
     'customer',
     'therapist',
+    'chat',
 ]
 
 MIDDLEWARE = [

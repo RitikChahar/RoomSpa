@@ -4,22 +4,21 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from django.conf import settings
+from django.shortcuts import get_object_or_404
 from therapist.models import Location, Services as TherapistServices
+from django.contrib.auth import get_user_model
 from User.permissions import IsCustomer
-from .models import CustomerAddress, Booking, Transaction, Conversation, Message
+from .models import CustomerAddress, Booking, Transaction
+from chat.models import Conversation, Message
 from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, ConversationSerializer, MessageSerializer, TransactionSerializer
 
 @api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsCustomer])
 def customer_address_view(request):
-    try:
-        addr = CustomerAddress.objects.get(customer=request.user)
-    except CustomerAddress.DoesNotExist:
-        addr = None
+    addr = CustomerAddress.objects.filter(customer=request.user).first()
     if request.method == 'GET':
         if addr:
-            serializer = CustomerAddressSerializer(addr)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(CustomerAddressSerializer(addr).data, status=status.HTTP_200_OK)
         return Response({}, status=status.HTTP_404_NOT_FOUND)
     if request.method == 'POST':
         serializer = CustomerAddressSerializer(data=request.data)
@@ -48,25 +47,16 @@ def book_therapist(request):
 @api_view(['GET'])
 @permission_classes([IsCustomer])
 def therapist_detail_view(request, therapist_id):
-    try:
-        Therapist = settings.AUTH_USER_MODEL.objects.get(id=therapist_id)
-    except:
-        return Response({'error': 'Therapist not found'}, status=status.HTTP_404_NOT_FOUND)
-    try:
-        loc = Location.objects.get(user=Therapist)
-    except Location.DoesNotExist:
-        loc = None
-    try:
-        serv_obj = TherapistServices.objects.get(user=Therapist)
-        serv_data = {'services': serv_obj.services}
-    except TherapistServices.DoesNotExist:
-        serv_data = {'services': []}
+    User = get_user_model()
+    therapist = get_object_or_404(User, id=therapist_id)
+    loc = Location.objects.filter(user=therapist).first()
+    serv_obj = TherapistServices.objects.filter(user=therapist).first()
     data = {
-        'id': Therapist.id,
-        'name': Therapist.name,
-        'email': Therapist.email,
+        'id': therapist.id,
+        'name': therapist.get_full_name() or therapist.username,
+        'email': therapist.email,
         'address': loc.address if loc else '',
-        'services': serv_data
+        'services': serv_obj.services if serv_obj else []
     }
     serializer = TherapistDetailSerializer(data)
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -74,15 +64,11 @@ def therapist_detail_view(request, therapist_id):
 @api_view(['POST'])
 @permission_classes([IsCustomer])
 def cancel_booking_view(request, booking_id):
-    try:
-        booking = Booking.objects.get(id=booking_id, customer=request.user)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    booking = get_object_or_404(Booking, id=booking_id, customer=request.user)
     booking.status = 'cancelled'
     booking.cancellation_reason = request.data.get('reason', '')
     booking.save()
-    serializer = BookingSerializer(booking)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 @permission_classes([IsCustomer])
@@ -92,7 +78,7 @@ def customer_profile_view(request):
     transactions = Transaction.objects.filter(booking__customer=user)
     data = {
         'id': user.id,
-        'name': user.name,
+        'name': user.get_full_name() or user.username,
         'email': user.email,
         'bookings': BookingSerializer(bookings, many=True).data,
         'transactions': TransactionSerializer(transactions, many=True).data
@@ -137,18 +123,14 @@ def search_therapists_view(request):
         distance = haversine(user_lat, user_lon, float(loc.latitude), float(loc.longitude))
         if distance <= float(loc.service_radius):
             therapist = loc.user
-            try:
-                serv_obj = TherapistServices.objects.get(user=therapist)
-                services_list = serv_obj.services
-            except TherapistServices.DoesNotExist:
-                services_list = []
+            serv_obj = TherapistServices.objects.filter(user=therapist).first()
             data = {
                 'id': therapist.id,
-                'name': therapist.name,
+                'name': therapist.get_full_name() or therapist.username,
                 'email': therapist.email,
                 'address': loc.address,
                 'distance': round(distance, 2),
-                'services': services_list
+                'services': serv_obj.services if serv_obj else []
             }
             results.append(data)
     serializer = TherapistDetailSerializer(results, many=True)
@@ -164,29 +146,19 @@ def customer_conversations_view(request):
 @api_view(['GET'])
 @permission_classes([IsCustomer])
 def customer_conversation_detail(request, conversation_id):
-    try:
-        conv = Conversation.objects.get(id=conversation_id, participants=request.user)
-    except Conversation.DoesNotExist:
-        return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
     msgs = Message.objects.filter(conversation=conv).order_by('created_at')
-    serializer = MessageSerializer(msgs, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(MessageSerializer(msgs, many=True).data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsCustomer])
 def send_customer_message(request, conversation_id):
-    try:
-        conv = Conversation.objects.get(id=conversation_id, participants=request.user)
-    except Conversation.DoesNotExist:
-        return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
     receiver_id = request.data.get('receiver_id')
     content = request.data.get('content', '')
-    try:
-        receiver = settings.AUTH_USER_MODEL.objects.get(id=receiver_id)
-    except:
-        return Response({'error': 'Receiver not found'}, status=status.HTTP_404_NOT_FOUND)
+    User = get_user_model()
+    receiver = get_object_or_404(User, id=receiver_id)
     msg = Message.objects.create(conversation=conv, sender=request.user, receiver=receiver, content=content)
     conv.last_message = msg
     conv.save()
-    serializer = MessageSerializer(msg)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
