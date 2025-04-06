@@ -10,7 +10,8 @@ from django.contrib.auth import get_user_model
 from User.permissions import IsCustomer
 from .models import CustomerAddress, Booking, Transaction
 from chat.models import Conversation, Message
-from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, ConversationSerializer, MessageSerializer, TransactionSerializer
+from .serializers import CustomerAddressSerializer, BookingSerializer, TherapistDetailSerializer, CustomerProfileSerializer, TransactionSerializer
+from chat.serializers import ConversationSerializer, MessageSerializer
 
 @api_view(['GET', 'POST', 'PUT'])
 @permission_classes([IsCustomer])

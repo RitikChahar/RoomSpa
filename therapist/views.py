@@ -13,19 +13,8 @@ from django.shortcuts import get_object_or_404
 from User.permissions import IsTherapist, IsCustomer
 from .models import Location, Pictures, Services, BankDetails, Order, Earnings, TherapistReview
 from chat.models import Conversation, Message
-from .serializers import (
-    LocationSerializer, 
-    PicturesSerializer, 
-    ServicesSerializer, 
-    BankDetailsSerializer,
-    TherapistProfileSerializer,
-    OrderSerializer, 
-    OrderUpdateSerializer,
-    MessageSerializer, 
-    ConversationSerializer,
-    TherapistReviewSerializer, 
-    TherapistReviewSummarySerializer
-)
+from .serializers import LocationSerializer, PicturesSerializer, ServicesSerializer, BankDetailsSerializer, TherapistProfileSerializer, OrderSerializer, OrderUpdateSerializer, TherapistReviewSerializer, TherapistReviewSummarySerializer
+from chat.serializers import ConversationSerializer, MessageSerializer
 from User.functions.image_handler import upload_image
 
 def handle_uploaded_file(file, subfolder):

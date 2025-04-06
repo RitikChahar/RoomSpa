@@ -67,19 +67,3 @@ class Transaction(models.Model):
             models.Index(fields=['status', 'created_at']),
         ]
         ordering = ['-created_at']
-
-class Review(models.Model):
-    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='review')
-    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='given_reviews')
-    therapist = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_reviews')
-    rating = models.PositiveSmallIntegerField(db_index=True)
-    comment = models.TextField(null=True, blank=True)
-    service_quality = models.PositiveSmallIntegerField(null=True, blank=True)
-    punctuality = models.PositiveSmallIntegerField(null=True, blank=True)
-    professionalism = models.PositiveSmallIntegerField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    class Meta:
-        indexes = [
-            models.Index(fields=['therapist', 'rating']),
-        ]
-        ordering = ['-created_at']
