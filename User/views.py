@@ -8,6 +8,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from .models import UserProfile
 from .serializers import UserProfileUpdateSerializer
 from .functions.generate_verification import generate_verification_token
+from .functions.generate_otp import generate_verification_otp
 from .functions.send_mail import send_registration_link
 from .functions.encryption import encrypt_password, decrypt_password
 
@@ -85,15 +86,12 @@ def register(request):
     elif UserProfile.objects.filter(phone_number=phone_number, verification_status=True).exists():
         return Response({'message': 'Phone number already exists. Please choose another one.'}, status=status.HTTP_400_BAD_REQUEST)
     else:
-        verification_token = generate_verification_token()
-        encrypted_phone_number = encrypt_password(phone_number)
+        verification_token = generate_verification_otp()
         
         if verification_method == 'email' and email:
-            verification_link = f"{settings.BASE_URL}/verify-email/?identifier={encrypted_phone_number}&verification-token={verification_token}"
-            send_registration_link(name, email, verification_link, "registration")
+            send_registration_link(name, email, verification_token, "registration")
         elif verification_method == 'phone' and phone_number:
-            verification_link = f"{settings.BASE_URL}/verify-email/?identifier={encrypted_phone_number}&verification-token={verification_token}"
-            send_registration_link(name, phone_number, verification_link, "registration")
+            send_registration_link(name, email, verification_token, "registration")
         else:
             return Response({'message': 'Invalid verification method or missing email/phone number.'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -132,14 +130,16 @@ def register(request):
             )
         return Response({'message': 'Your account has been created successfully. Please verify your email or phone number!'}, status=status.HTTP_201_CREATED)
 
-@api_view(['GET'])
+@api_view(['POST'])
 def email_verification(request):
-    encrypted_identifier = request.query_params.get('identifier', '').strip()
-    identifier = decrypt_password(encrypted_identifier)['decrypted_password']
-    verification_token = request.query_params.get('verification-token')
-    user_profile = UserProfile.objects.filter(phone_number=identifier, verification_token=verification_token).first()
+    identifier = request.data.get('identifier', '').strip()
+    verification_token = request.data.get('verification_token')
+    user_profile = UserProfile.objects.filter(
+        phone_number=identifier,
+        verification_token=verification_token
+    ).first()
     
-    if user_profile is not None:
+    if user_profile:
         user_profile.verification_status = True
         user_profile.verification_token = None
         user_profile.save()
@@ -150,8 +150,9 @@ def email_verification(request):
 @api_view(['POST'])
 def forgot_password(request):
     identifier = request.data.get('identifier', '').strip()
-    
+    method = ''
     if '@' in identifier:
+        method = 'email'
         user_profile = UserProfile.objects.filter(email=identifier).first()
     else:
         user_profile = UserProfile.objects.filter(phone_number=identifier).first()
@@ -159,38 +160,42 @@ def forgot_password(request):
     if not user_profile:
         return Response({'message': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
     
-    password = request.data.get('password')
-    encrypted_password = encrypt_password(password)
-    encrypted_phone_number = encrypt_password(user_profile.phone_number)
-    reset_link = f"{settings.BASE_URL}/reset-password/?identifier={encrypted_phone_number}&verification-token={encrypted_password}"
-    user_profile.verification_token = encrypted_password
+    verification_token = generate_verification_otp()
+    user_profile.verification_token = verification_token
     user_profile.save()
 
-    if user_profile.email:
-        send_registration_link(user_profile.name, user_profile.email, reset_link, "password_reset")
+    if method == 'email':
+        send_registration_link(user_profile.name, user_profile.email, verification_token, "password_reset")
         return Response({'message': 'An email to reset your password has been sent.'}, status=status.HTTP_200_OK)
     else:
         # Handle phone verification if email is not provided
-        return Response({'message': 'A message to reset your password has been sent to your phone.'}, 
+        return Response({'message': 'An sms to reset your password has been sent to your phone number.'}, 
                        status=status.HTTP_200_OK)
 
-@api_view(['GET', 'POST'])
+@api_view(['POST'])
 def reset_password(request):
-    if request.method == 'GET':
-        identifier = request.query_params.get('identifier', '').strip()
-        verification_token = request.query_params.get('verification-token')
-    elif request.method == 'POST':
-        identifier = request.data.get('identifier', '').strip()
-        verification_token = request.data.get('verification-token')
+    identifier = request.data.get('identifier', '').strip()
+    verification_token = request.data.get('verification_token')
 
-    decrypted_identifier = decrypt_password(identifier)['decrypted_password']
-
-    user_profile = UserProfile.objects.filter(phone_number=decrypted_identifier).first()
-    decrypted_password = decrypt_password(verification_token)
+    if '@' in identifier:
+        user_profile = UserProfile.objects.filter(
+            email=identifier,
+            verification_token=verification_token
+        ).first()
+    else:
+        user_profile = UserProfile.objects.filter(
+            phone_number=identifier,
+            verification_token=verification_token
+        ).first()
+        
+    if not user_profile:
+        return Response({'message': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
+    new_password = request.data.get('new_password')
     
-    if decrypted_password['success'] and user_profile is not None:
-        user_profile.set_password(decrypted_password['decrypted_password'])
+    if user_profile:
         user_profile.verification_token = None
+        user_profile.set_password(new_password)
         user_profile.save()
         return Response({'message': 'Password reset successful.'}, status=status.HTTP_200_OK)
     else:
