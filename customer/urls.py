@@ -8,7 +8,4 @@ urlpatterns = [
     path('cancel-booking/<uuid:booking_id>/', views.cancel_booking_view, name='cancel_booking'),
     path('profile/', views.customer_profile_view, name='customer_profile'),
     path('search/', views.search_therapists_view, name='search_therapists'),
-    path('conversations/', views.customer_conversations_view, name='customer_conversations'),
-    path('conversations/<int:conversation_id>/', views.customer_conversation_detail, name='customer_conversation_detail'),
-    path('conversations/<int:conversation_id>/send/', views.send_customer_message, name='send_customer_message'),
 ]

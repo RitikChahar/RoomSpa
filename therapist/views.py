@@ -255,34 +255,6 @@ def earnings_summary_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsTherapist])
-def conversations_view(request):
-    convs = Conversation.objects.filter(participants=request.user)
-    serializer = ConversationSerializer(convs, many=True, context={'request': request})
-    return Response(serializer.data)
-
-@api_view(['GET'])
-@permission_classes([IsTherapist])
-def conversation_detail_view(request, conversation_id):
-    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
-    Message.objects.filter(receiver=request.user, sender__in=conv.participants.exclude(id=request.user.id), is_read=False).update(is_read=True)
-    msgs = Message.objects.filter(
-        Q(sender=request.user, receiver__in=conv.participants.exclude(id=request.user.id)) |
-        Q(receiver=request.user, sender__in=conv.participants.exclude(id=request.user.id))
-    ).order_by('created_at')
-    return Response({'conversation': ConversationSerializer(conv, context={'request': request}).data, 'messages': MessageSerializer(msgs, many=True).data})
-
-@api_view(['POST'])
-@permission_classes([IsTherapist])
-def send_message_view(request, conversation_id):
-    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
-    recipient = conv.participants.exclude(id=request.user.id).first()
-    msg = Message.objects.create(sender=request.user, receiver=recipient, content=request.data.get('content', ''))
-    conv.last_message = msg
-    conv.save()
-    return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
-
-@api_view(['GET'])
-@permission_classes([IsTherapist])
 def therapist_stats_view(request):
     orders = Order.objects.filter(therapist=request.user)
     total = orders.count()

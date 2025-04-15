@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'customer',
     'therapist',
     'chat',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -123,6 +124,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'Spa.wsgi.application'
+
+ASGI_APPLICATION = 'Spa.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)],
+        },
+    },
+}
 
 
 # Database

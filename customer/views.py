@@ -152,30 +152,3 @@ def search_therapists_view(request):
     
     serializer = TherapistDetailSerializer(results, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
-
-@api_view(['GET'])
-@permission_classes([IsCustomer])
-def customer_conversations_view(request):
-    convs = Conversation.objects.filter(participants=request.user)
-    serializer = ConversationSerializer(convs, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
-
-@api_view(['GET'])
-@permission_classes([IsCustomer])
-def customer_conversation_detail(request, conversation_id):
-    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
-    msgs = Message.objects.filter(conversation=conv).order_by('created_at')
-    return Response(MessageSerializer(msgs, many=True).data, status=status.HTTP_200_OK)
-
-@api_view(['POST'])
-@permission_classes([IsCustomer])
-def send_customer_message(request, conversation_id):
-    conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
-    receiver_id = request.data.get('receiver_id')
-    content = request.data.get('content', '')
-    User = get_user_model()
-    receiver = get_object_or_404(User, id=receiver_id)
-    msg = Message.objects.create(conversation=conv, sender=request.user, receiver=receiver, content=content)
-    conv.last_message = msg
-    conv.save()
-    return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)

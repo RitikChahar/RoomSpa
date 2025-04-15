@@ -8,6 +8,7 @@ urlpatterns = [
     path('', include('User.urls')),
     path('customer/', include('customer.urls')),
     path('therapist/', include('therapist.urls')),
+    path('chat/', include('chat.urls')),
 ]
 
 def custom_page_not_found(request, exception):
