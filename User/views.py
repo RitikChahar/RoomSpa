@@ -215,14 +215,11 @@ def update_user_profile(request):
     user = request.user
     new_email = request.data.get("email")
     new_phone = request.data.get("phone_number")
-    new_password = request.data.get("new_password")
+    new_password = request.data.get("password")
     
     if new_email and new_email != user.email:
-        verification_token = generate_verification_token()
-        encrypted_new_email = encrypt_password(new_email)
-        encrypted_phone_number = encrypt_password(user.phone_number)
-        verification_link = f"{settings.BASE_URL}/update-email/?identifier={encrypted_phone_number}&verification-token={verification_token}&update-id={encrypted_new_email}"
-        send_registration_link(user.name, new_email, verification_link, "email_update")
+        verification_token = generate_verification_otp()
+        send_registration_link(user.name, new_email, verification_token, "email_update")
         
         user.verification_token = verification_token
         user.save()
@@ -259,40 +256,37 @@ def update_user_profile(request):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET'])
-def update_email(request):
-    identifier = request.query_params.get('identifier', '').strip()
-    verification_token = request.query_params.get('verification-token', '').strip()
-    encrypted_new_email = request.query_params.get('update-id', '').strip()
-    new_email = decrypt_password(encrypted_new_email)
-    phone_number = decrypt_password(identifier)
-    
-    user_profile = UserProfile.objects.filter(phone_number=phone_number, verification_token=verification_token).first()
-    
-    if user_profile and new_email['success']:
-        user_profile.email = new_email['decrypted_password']
-        user_profile.verification_token = None
-        user_profile.save()
-        return Response({"message": "Email updated successfully."}, status=status.HTTP_200_OK)
-    else:
-        return Response({"message": "Email verification failed."}, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['POST'])
+def update_email_phone(request):
+    identifier = request.data.get('identifier', '').strip()
+    verification_token = request.data.get('verification_token')
+    new_identifier = request.data.get('new_identifier')
 
-@api_view(['GET'])
-def update_phone(request):
-    name = request.query_params.get('name', '').strip()
-    verification_token = request.query_params.get('verification-token', '').strip()
-    encrypted_new_phone = request.query_params.get('update-id', '').strip()
-    new_phone = decrypt_password(encrypted_new_phone)
-    
-    user_profile = UserProfile.objects.filter(name=name, verification_token=verification_token).first()
-    
-    if user_profile and new_phone['success']:
-        user_profile.phone_number = new_phone['decrypted_password']
+    if '@' in identifier:
+        user_profile = UserProfile.objects.filter(
+            email=identifier,
+            verification_token=verification_token
+        ).first()
+        if not user_profile:
+            return Response({'message': 'Email Update Failed.'}, status=status.HTTP_404_NOT_FOUND)
         user_profile.verification_token = None
+        user_profile.email = new_identifier
         user_profile.save()
-        return Response({"message": "Phone number updated successfully."}, status=status.HTTP_200_OK)
     else:
-        return Response({"message": "Phone verification failed."}, status=status.HTTP_400_BAD_REQUEST)
+        user_profile = UserProfile.objects.filter(
+            phone_number=identifier,
+            verification_token=verification_token
+        ).first()
+        if not user_profile:
+            return Response({'message': 'Phone Number Update Failed.'}, status=status.HTTP_404_NOT_FOUND)
+        user_profile.verification_token = None
+        user_profile.phone_number = new_identifier
+        user_profile.save()
+        
+    if user_profile:
+        return Response({'message': 'Update successful.'}, status=status.HTTP_200_OK)
+    else:
+        return Response({'message': 'Update failed.'}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])

@@ -12,7 +12,6 @@ urlpatterns = [
     path('verify-token/', views.verify_token, name='verify_token'),  
     path('refresh-token/', views.refresh_token, name='refresh_token'),  
     path('update-profile/', views.update_user_profile, name='update_profile'),
-    path('update-email/', views.update_email, name='update_email'),
-    path('update-phone/', views.update_phone, name='update_phone'),
+    path('update-email-phone/', views.update_email_phone, name='update_email'),
     path('delete-profile/', views.delete_user_profile, name='delete_profile'),
 ]
