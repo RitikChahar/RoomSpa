@@ -134,10 +134,18 @@ def register(request):
 def email_verification(request):
     identifier = request.data.get('identifier', '').strip()
     verification_token = request.data.get('verification_token')
-    user_profile = UserProfile.objects.filter(
-        phone_number=identifier,
-        verification_token=verification_token
-    ).first()
+
+    if '@' in identifier:
+        user_profile = UserProfile.objects.filter(
+            email=identifier,
+            verification_token=verification_token
+        ).first()
+    else:
+        user_profile = UserProfile.objects.filter(
+            phone_number=identifier,
+            verification_token=verification_token
+        ).first()
+
     
     if user_profile:
         user_profile.verification_status = True
